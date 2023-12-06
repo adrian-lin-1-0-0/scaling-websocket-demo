@@ -2,7 +2,10 @@
 
 ## TL;DR
 
-因為好玩使用`Consistent Hashing`在不同節點上儲存 User's Connection 資訊
+使用`Consistent Hashing` 參考[groupcache](https://github.com/golang/groupcache) 在不同節點上儲存 User's Connection 資訊
+
+- Consistent Hashing
+- Service Discovery
 
 下一步是實作 `Chore`
 
