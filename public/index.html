@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+    <script type="text/javascript">
+        var sock = null;
+        var userID = "";
+        var wsuri = "";
+
+        window.onload = function() {
+            console.log("onload");
+        };
+
+        function createWebSocket() {
+            userID = document.getElementById('userID').value;
+            wsuri = "ws://" + location.host + "/ws?userId=" + userID;
+
+            console.log("Creating WebSocket with userID: " + userID);
+            console.log("WebSocket URI: " + wsuri);
+
+            sock = new WebSocket(wsuri);
+
+            sock.onopen = function() {
+                console.log("connected to " + wsuri);
+            }
+
+            sock.onclose = function(e) {
+                console.log("connection closed (" + e.code + ")");
+            }
+
+            sock.onmessage = async function(e) {
+                var data = await e.data?.text();
+
+                console.log("message received: ",data);
+
+                var p = document.createElement('p');
+                p.appendChild(document.createTextNode(data));
+                document.body.appendChild(p);
+
+            }
+        };
+
+        function send() {
+            var message = document.getElementById('message').value;
+            var to = document.getElementById('to').value;
+
+            var data = {
+                "userId": userID,
+                "msg": message,
+                "to": to
+            };
+
+            sock.send(JSON.stringify(data));
+        };
+    </script>
+    <h1>WebSocket Echo Test</h1>
+    <p>
+        Enter UserID: <input id="userID" type="text">
+        <button onclick="createWebSocket();">Create WebSocket</button>
+    </p>
+    <form>
+        <p>
+            Message: <input id="message" type="text" value="Hello, world!">
+            To: <input id="to" type="text" value="Recipient">
+        </p>
+    </form>
+    <button onclick="send();">Send Message</button>
+</body>
+</html>

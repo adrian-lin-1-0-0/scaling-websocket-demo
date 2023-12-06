@@ -1,0 +1,39 @@
+version: '3'
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.4.0
+    environment:
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      DATA_DIR: /etcd-data
+    tmpfs:
+      - /etcd-data
+
+  app1:
+    build: ./
+    depends_on:
+      - etcd
+    environment:
+      SERVER_PORT: 8000
+      ETCD_ENDPOINT: etcd:2379
+    ports:
+      - 8001:8000
+  app2:
+    build: ./
+    depends_on:
+      - etcd
+    environment:
+      SERVER_PORT: 8000
+      ETCD_ENDPOINT: etcd:2379
+    ports:
+      - 8002:8000
+  app3:
+    build: ./
+    depends_on:
+      - etcd
+    environment:
+      SERVER_PORT: 8000
+      ETCD_ENDPOINT: etcd:2379
+    ports:
+      - 8003:8000
+    
