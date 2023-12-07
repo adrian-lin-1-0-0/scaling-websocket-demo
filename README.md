@@ -22,7 +22,7 @@
 
 
 - 儲存在其他服務上(?)
-    - etcd
+    - ~~etcd~~ (不要在節點儲存太多資料)
         - lease keepalive
     - Redis
         - [Redis pipelining](https://redis.io/docs/manual/pipelining/)
