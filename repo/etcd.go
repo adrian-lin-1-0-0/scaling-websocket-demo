@@ -19,18 +19,17 @@ var (
 )
 
 type Discovery struct {
-	client    *etcd.Client
-	self      string
-	ctx       context.Context
-	ttl       time.Duration
-	heartbeat time.Duration
-	leaseID   etcd.LeaseID
-	once      sync.Once
+	client  *etcd.Client
+	self    string
+	ctx     context.Context
+	ttl     time.Duration
+	leaseID etcd.LeaseID
+	once    sync.Once
+	leaser  etcd.Lease
 }
 
 const (
-	defaultTTL       = 10 * time.Second
-	defaultHeartbeat = 3 * time.Second
+	defaultTTL = 10 * time.Second
 )
 
 var _ domain.Discovery = (*Discovery)(nil)
@@ -47,17 +46,16 @@ func NewDiscovery(ctx context.Context, endpoints []string, self string) (*Discov
 	}
 
 	return &Discovery{
-		client:    cli,
-		self:      self,
-		ctx:       ctx,
-		ttl:       defaultTTL,
-		heartbeat: defaultHeartbeat,
-		once:      sync.Once{},
+		client: cli,
+		self:   self,
+		ctx:    ctx,
+		ttl:    defaultTTL,
+		once:   sync.Once{},
 	}, nil
 }
 
-func (c *Discovery) GetServices(basePath string) ([]domain.Endpoint, error) {
-	resp, err := c.client.Get(c.ctx, basePath, etcd.WithPrefix())
+func (d *Discovery) GetServices(basePath string) ([]domain.Endpoint, error) {
+	resp, err := d.client.Get(d.ctx, basePath, etcd.WithPrefix())
 	if err != nil {
 		return nil, ErrGetServicesFailed
 	}
@@ -72,8 +70,8 @@ func (c *Discovery) GetServices(basePath string) ([]domain.Endpoint, error) {
 	return endpoints, nil
 }
 
-func (c *Discovery) WatchPrefix(basePath string) (domain.EventChan, error) {
-	watchChan := c.client.Watch(c.ctx, basePath, etcd.WithPrefix())
+func (d *Discovery) WatchPrefix(basePath string) (domain.EventChan, error) {
+	watchChan := d.client.Watch(d.ctx, basePath, etcd.WithPrefix())
 	eventChan := make(chan domain.Event)
 	go func() {
 		for resp := range watchChan {
@@ -94,30 +92,31 @@ func (c *Discovery) WatchPrefix(basePath string) (domain.EventChan, error) {
 	return eventChan, nil
 }
 
-func (c *Discovery) InitLease(ttl int64) error {
-	lease := etcd.NewLease(c.client)
-	leaseResp, err := lease.Grant(c.ctx, ttl)
+func (d *Discovery) InitLease(ttl int64) error {
+	lease := etcd.NewLease(d.client)
+	d.leaser = lease
+	leaseResp, err := lease.Grant(d.ctx, ttl)
 	if err != nil {
 		return fmt.Errorf("grant lease failed: %v", err)
 	}
-	c.leaseID = leaseResp.ID
+	d.leaseID = leaseResp.ID
 	return nil
 }
 
-func (c *Discovery) Register(endpoint domain.Endpoint) error {
-	c.once.Do(func() {
-		err := c.InitLease(int64(c.ttl.Seconds()))
+func (d *Discovery) Register(endpoint domain.Endpoint) error {
+	d.once.Do(func() {
+		err := d.InitLease(int64(d.ttl.Seconds()))
 		if err != nil {
 			return
 		}
-		go c.loop()
+		go d.keepAlive()
 	})
 
-	if c.leaseID == 0 {
+	if d.leaseID == 0 {
 		panic(errors.New("leaseID is nil"))
 	}
 
-	_, err := c.client.Put(c.ctx, string(endpoint), "", etcd.WithLease(c.leaseID))
+	_, err := d.client.Put(d.ctx, string(endpoint), "", etcd.WithLease(d.leaseID))
 
 	if err != nil {
 		panic("register service failed :" + err.Error())
@@ -128,27 +127,13 @@ func (c *Discovery) Register(endpoint domain.Endpoint) error {
 	return err
 }
 
-func (c *Discovery) Unregister(endpoint domain.Endpoint) error {
-	_, err := c.client.Delete(c.ctx, string(endpoint))
+func (d *Discovery) Unregister(endpoint domain.Endpoint) error {
+	_, err := d.client.Delete(d.ctx, string(endpoint))
 	return err
 }
 
-func (c *Discovery) loop() {
-	tick := time.NewTicker(c.heartbeat)
-	defer tick.Stop()
-	for {
-		select {
-		case <-tick.C:
-			c.keepAlive()
-		case <-c.ctx.Done():
-			return
-		}
-	}
-}
-
 func (c *Discovery) keepAlive() {
-	lease := etcd.NewLease(c.client)
-	leaseKeepAliveQueue, err := lease.KeepAlive(c.ctx, c.leaseID)
+	leaseKeepAliveQueue, err := c.leaser.KeepAlive(c.ctx, c.leaseID)
 	if err != nil {
 		panic(err)
 	}
